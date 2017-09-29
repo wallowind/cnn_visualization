@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from LeapLog import get_log
-log = get_log(__name__, 'DEBUG')
+log = get_log(__name__, 'WARNING')
 
 
 class Batch(object):
@@ -80,8 +80,11 @@ class Batch(object):
 class Preprocess(object):
     DATA = None
 
-    def __init__(self, filename, *args):
-        self._load(filename)
+    def __init__(self, filename, raw=False, *args):
+        if raw:
+            self.DATA = filename
+        else:
+            self._load(filename)
 
     def _is_csv(self, filename):
         _, file_extension = os.path.splitext(filename)
@@ -117,5 +120,43 @@ class Preprocess(object):
         else:
             data = self.DATA[:, n_cols]
         if split:
-            data, _ = train_test_split(data, split, random_state=rnd_state)
+            data = train_test_split(
+                data, train_size=split, random_state=rnd_state)
         return data
+
+    def change(self, split=None, length=10, channels=None, altering='channel'):
+        if split:
+            if hasattr(split, '__len__'):
+                data = self.DATA[:, split]
+            else:
+                data = self.DATA[:, :split]
+        else:
+            data = self.DATA
+        if channels:
+            data = data[:, channels]
+        if altering == 'sample':
+            # take all channels for 'length' times and combine them as a sample
+            temp = np.hstack([i for i in data[:length, :]])
+            for i in range(length, data.shape[0] // length - 1, length):
+                temp = np.vstack(
+                    (temp, np.hstack([j for j in data[i:i + length, :]])))
+        elif altering == 'channel':
+            # take 'length' samples for each channel (forming a windows)
+            lim = data.shape[1]
+            temp = np.hstack([data[j, i] for i in range(lim)
+                              for j in range(length)])
+            for l in range(length, data.shape[0] // length - 1, length):
+                temp = np.vstack(
+                    (temp, np.hstack([data[j + l, i] for i in range(lim)
+                                      for j in range(length)])))
+        elif altering == 'mean':
+            # mean of 'length' samples ?
+            temp = np.mean(data[:length, :], axis=0)
+            for l in range(length, data.shape[0] // length - 1, length):
+                temp = np.vstack(
+                    (temp, np.mean(data[l:l + length, :], axis=0)))
+        return temp
+
+    @property
+    def info(self):
+        print("Data shape is {0}".format(self.DATA.shape))
